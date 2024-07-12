@@ -1,110 +1,158 @@
 #include <Arduino.h>
-#include <math.h>
 #include <WiFi.h>
+#include <WiFiClient.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
 #include <Update.h>
-// #include <ArduinoMDNS.h> // 引入mDNS库
 
-const char *ssid = "ESP32-c3_OTAdemo"; // AP的名称
-const char *password = "123456789";    // AP的密码
-
-IPAddress local_IP(192, 168, 4, 1); // 静态IP地址
-IPAddress gateway(192, 168, 4, 1);  // 网关IP地址
-
+const char *host = "esp32";
+const char *ssid = "xzhi";
+const char *password = "qwer1234";
 WebServer server(80);
 
-
-
-const char *updateIndex =
-    "<html>"
-    "<head>"
-    "<meta charset=\"UTF-8\">"
-    "<title>ESP32 OTA 更新</title>"
-    "<style>"
-    "body { font-family: Arial, sans-serif; text-align: center; }"
-    "h1 { color: #333; }"
-    "form { margin-top: 20px; }"
-    "input[type=file] { display: block; margin: 20px auto; }"
-    "input[type=submit] { margin-top: 20px; padding: 10px 20px; font-size: 18px; }"
-    "</style>"
-    "</head>"
-    "<body>"
-    "<h1>欢迎使用 ESP32 OTA 更新</h1>"
-    "<form method='POST' action='/update' enctype='multipart/form-data'>"
-    "<input type='file' name='update' accept='.bin'>"
-    "<input type='submit' value='上传固件'>"
+const char *loginIndex =
+    "<form name='loginForm'>"
+    "<table width='20%' bgcolor='A09F9F' align='center'>"
+    "<tr>"
+    "<td colspan=2>"
+    "<center><font size=4><b>ESP32 Login Page</b></font></center>"
+    "<br>"
+    "</td>"
+    "<br>"
+    "<br>"
+    "</tr>"
+    "<td>Username:</td>"
+    "<td><input type='text' size=25 name='userid'><br></td>"
+    "</tr>"
+    "<br>"
+    "<br>"
+    "<tr>"
+    "<td>Password:</td>"
+    "<td><input type='Password' size=25 name='pwd'><br></td>"
+    "<br>"
+    "<br>"
+    "</tr>"
+    "<tr>"
+    "<td><input type='submit' onclick='check(this.form)' value='Login'></td>"
+    "</tr>"
+    "</table>"
     "</form>"
-    "</body>"
-    "</html>";
+    "<script>"
+    "function check(form)"
+    "{"
+    "if(form.userid.value=='admin' && form.pwd.value=='admin')"
+    "{"
+    "window.open('/serverIndex')"
+    "}"
+    "else"
+    "{"
+    " alert('Error Password or Username')/*displays error message*/"
+    "}"
+    "}"
+    "</script>";
 
-void handleRoot()
+const char *serverIndex =
+    "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
+    "<form method='POST' action='/update' enctype='multipart/form-data' id='upload_form'>"
+    "<input type='file' name='update'>"
+    "<input type='submit' value='Update'>"
+    "</form>"
+    "<div id='prg'>progress: 0%</div>"
+    "<script>"
+    "$('form').submit(function(e){"
+    "e.preventDefault();"
+    "var form = $('#upload_form')[0];"
+    "var data = new FormData(form);"
+    " $.ajax({"
+    "url: '/update',"
+    "type: 'POST',"
+    "data: data,"
+    "contentType: false,"
+    "processData:false,"
+    "xhr: function() {"
+    "var xhr = new window.XMLHttpRequest();"
+    "xhr.upload.addEventListener('progress', function(evt) {"
+    "if (evt.lengthComputable) {"
+    "var per = evt.loaded / evt.total;"
+    "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
+    "}"
+    "}, false);"
+    "return xhr;"
+    "},"
+    "success:function(d, s) {"
+    "console.log('success!')"
+    "},"
+    "error: function (a, b, c) {"
+    "}"
+    "});"
+    "});"
+    "</script>";
+
+void OTA_Init(void)
 {
-    server.sendHeader("Location", "/update");
-    server.send(302, "text/plain", "");
-}
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  Serial.println("");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 
-void OTA_Init()
-{
-    Serial.begin(115200); // 初始化串口，波特率为115200
-    Serial.println("Booting...");
+  if (!MDNS.begin(host))
+  {
+    Serial.println("Error setting up MDNS responder!");
+    while (1)
+    {
+      delay(1000);
+    }
+  }
+  Serial.println("mDNS responder started");
 
-    // 将 ESP32 设置为 AP 模式并指定静态 IP 地址
-    WiFi.softAP(ssid, password);
-    WiFi.softAPConfig(local_IP, gateway, IPAddress(255, 255, 255, 0));
-
-    Serial.print("Access Point IP address: ");
-    Serial.println(WiFi.softAPIP()); // 打印 ESP32 的 AP IP 地址
-
-    // 设置服务器处理函数
-    server.on("/", HTTP_GET, handleRoot); // 根路由重定向到 OTA 页面
-
-    server.on("/update", HTTP_GET, []()
-              {
+  server.on("/", HTTP_GET, []()
+            {
     server.sendHeader("Connection", "close");
-    server.send(200, "text/html", updateIndex); });
+    server.send(200, "text/html", loginIndex); });
 
-    server.on("/update", HTTP_POST, []()
-              {
+  server.on("/serverIndex", HTTP_GET, []()
+            {
     server.sendHeader("Connection", "close");
+    server.send(200, "text/html", serverIndex); });
 
-    //动态显示结果
-  String message = Update.hasError() ? "更新失败" : "更新成功。重新启动…";
-  server.sendHeader("Content-Type", "text/html; charset=utf-8");
-  server.send(200, "text/html", "<span style='font-size: 24px;'>" + message + "</span>");
-
-
-    delay(1000);
+  server.on("/update", HTTP_POST, []()
+            {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
     ESP.restart(); }, []()
-              {
-    HTTPUpload& upload = server.upload(); //用于处理上传的文件数据
+            {
+    HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
       Serial.printf("Update: %s\n", upload.filename.c_str());
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { // 以最大可用大小开始
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
         Update.printError(Serial);
       }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
-      // 将接收到的数据写入Update对象
       if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
         Update.printError(Serial);
       }
     } else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) { // 设置大小为当前大小
-        Serial.printf("Update Success: %u bytes\n", upload.totalSize);
+      if (Update.end(true)) {
+        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
       } else {
         Update.printError(Serial);
       }
     } });
 
-    server.begin();
-    Serial.println("HTTP server started");
-
-    // 程序逻辑 版本1.1
-    Serial.println();
-    Serial.println("NEW ESP32C3!!");
+  server.begin();
+  Serial.println("HTTP server started");
 }
 
-
-void Web_Doing(void)
+void OTA_Doing(void)
 {
-    server.handleClient();
+  server.handleClient();
 }

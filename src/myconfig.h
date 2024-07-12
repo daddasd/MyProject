@@ -14,9 +14,8 @@ void Servo_Init(void);
 void Servo_ON(void);
 
 /*OTA*/
-void handleRoot(void);
 void OTA_Init(void);
-void Web_Doing(void);
+void OTA_Doing(void);
 /*OTA*/
 
 
