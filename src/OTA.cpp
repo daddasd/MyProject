@@ -1,9 +1,4 @@
-#include <Arduino.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
-#include <Update.h>
+#include "myconfig.h"
 
 const char *host = "esp32";
 const char *ssid = "xzhi";
