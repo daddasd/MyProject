@@ -1,8 +1,5 @@
 #include "myconfig.h"
 
-
-
-
 // 17£¨Rx£© ºÍ 16£¨Tx£©
 HardwareSerial mySerial2(2);
 

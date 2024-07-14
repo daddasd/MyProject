@@ -15,6 +15,9 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <cstring> // °üº¬memsetº¯Êý
+#include"SoftwareSerial.h"
+#include <HTTPUpdate.h>
+#include <EEPROM.h>
 
 #define LOCK_ON Servo_ON();
 void Servo_Init(void);
@@ -22,7 +25,10 @@ void Servo_ON(void);
 
 /*OTA*/
 void OTA_Init(void);
-void OTA_Doing(void);
+void updateBin(void);
+void Check_VERSION(void);
+String Read_EEPROM_VERSION(int startAddress);
+void Write_EEPROM_VERSION(int startAddress, String version);
 /*OTA*/
 
 /*****FingerPrint******/
@@ -41,4 +47,13 @@ void printHex(byte *buffer, byte bufferSize);
 void printDec(byte *buffer, byte bufferSize);
 bool NFC_Authenticate();
 /*****NFC******/
+
+/*****FaceID******/
+void Face_Init(void);
+bool Face_registration();
+bool Face_verification();
+/*****FaceID******/
+
+
+
 #endif

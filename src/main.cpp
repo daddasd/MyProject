@@ -1,6 +1,13 @@
-#include <Arduino.h>
 #include "myconfig.h"
-// put function declarations here:
+
+
+/*
+Servo引脚 GND 5V PIN:1
+NFC引脚 SDA:15 SCK:14 MOSI:13 MISO:12  IRQ:NULL  GND  RST:9  3.3V
+指纹引脚 5v 5v GND RX:17 TX:16 GND
+人脸识别：TX 4 RX 5
+*/
+
 
 void setup()
 {
@@ -9,35 +16,13 @@ void setup()
   OTA_Init();
   Finger_Init();
   NFC_Init();
+  Face_Init();
+  Check_VERSION();
 }
 
 void loop()
 {
-  OTA_Doing();
-  if(NFC_Authenticate()==true)
-  {
-    printf("ok");
-  }
-  
-    // if (Serial.available() > 0)
-    // {
-    //   // 读取完整的输入字符串
-    //   String user_order = Serial.readStringUntil('\n');
-    //   user_order.trim(); // 去除字符串前后的空白字符
-
-    //   // 清空串口缓冲区
-    //   Serial.flush();
-    //   while (Serial.available() > 0)
-    //   {
-    //     Serial.read(); // 读取并丢弃所有剩余数据
-    //   }
-
-    //   if (user_order == "NFC")
-    //   {
-    //     if (NFC_Certification()==true)
-    //       {
-    //         printf
-    //       }
-    //   }
-    // }
-  }
+  //Face_verification();
+  Face_registration();
+  delay(2000);
+}

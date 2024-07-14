@@ -1,90 +1,18 @@
-#include "myconfig.h"
+#include <WiFi.h>
+#include <HTTPUpdate.h>
+#include <EEPROM.h>
 
 const char *host = "esp32";
 const char *ssid = "xzhi";
 const char *password = "qwer1234";
-WebServer server(80);
+String upUrl = "http://bin.bemfa.com/b/3BcY2IwNDJlZGE1MWY4NGU4MDliYWJhZDBiMDAzODc2NWY=ENLOCK.bin";
 
-const char *loginIndex =
-    "<form name='loginForm'>"
-    "<table width='20%' bgcolor='A09F9F' align='center'>"
-    "<tr>"
-    "<td colspan=2>"
-    "<center><font size=4><b>ESP32 Login Page</b></font></center>"
-    "<br>"
-    "</td>"
-    "<br>"
-    "<br>"
-    "</tr>"
-    "<td>Username:</td>"
-    "<td><input type='text' size=25 name='userid'><br></td>"
-    "</tr>"
-    "<br>"
-    "<br>"
-    "<tr>"
-    "<td>Password:</td>"
-    "<td><input type='Password' size=25 name='pwd'><br></td>"
-    "<br>"
-    "<br>"
-    "</tr>"
-    "<tr>"
-    "<td><input type='submit' onclick='check(this.form)' value='Login'></td>"
-    "</tr>"
-    "</table>"
-    "</form>"
-    "<script>"
-    "function check(form)"
-    "{"
-    "if(form.userid.value=='admin' && form.pwd.value=='admin')"
-    "{"
-    "window.open('/serverIndex')"
-    "}"
-    "else"
-    "{"
-    " alert('Error Password or Username')/*displays error message*/"
-    "}"
-    "}"
-    "</script>";
-
-const char *serverIndex =
-    "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
-    "<form method='POST' action='/update' enctype='multipart/form-data' id='upload_form'>"
-    "<input type='file' name='update'>"
-    "<input type='submit' value='Update'>"
-    "</form>"
-    "<div id='prg'>progress: 0%</div>"
-    "<script>"
-    "$('form').submit(function(e){"
-    "e.preventDefault();"
-    "var form = $('#upload_form')[0];"
-    "var data = new FormData(form);"
-    " $.ajax({"
-    "url: '/update',"
-    "type: 'POST',"
-    "data: data,"
-    "contentType: false,"
-    "processData:false,"
-    "xhr: function() {"
-    "var xhr = new window.XMLHttpRequest();"
-    "xhr.upload.addEventListener('progress', function(evt) {"
-    "if (evt.lengthComputable) {"
-    "var per = evt.loaded / evt.total;"
-    "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
-    "}"
-    "}, false);"
-    "return xhr;"
-    "},"
-    "success:function(d, s) {"
-    "console.log('success!')"
-    "},"
-    "error: function (a, b, c) {"
-    "}"
-    "});"
-    "});"
-    "</script>";
+#define CURRENT_VERSION "1.0.0" // 当前版本
+#define NEW_VERSION "1.5.5"     // 要更新的版本
 
 void OTA_Init(void)
 {
+  int Flag = 0;
   Serial.begin(115200);
   WiFi.begin(ssid, password);
   Serial.println("");
@@ -99,55 +27,114 @@ void OTA_Init(void)
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  if (!MDNS.begin(host))
+  EEPROM.begin(512); // 初始化 EEPROM
+
+  Flag = EEPROM.read(64);
+  if(Flag==1)
   {
-    Serial.println("Error setting up MDNS responder!");
-    while (1)
-    {
-      delay(1000);
-    }
+    EEPROM.write(64,0);
   }
-  Serial.println("mDNS responder started");
-
-  server.on("/", HTTP_GET, []()
-            {
-    server.sendHeader("Connection", "close");
-    server.send(200, "text/html", loginIndex); });
-
-  server.on("/serverIndex", HTTP_GET, []()
-            {
-    server.sendHeader("Connection", "close");
-    server.send(200, "text/html", serverIndex); });
-
-  server.on("/update", HTTP_POST, []()
-            {
-    server.sendHeader("Connection", "close");
-    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-    ESP.restart(); }, []()
-            {
-    HTTPUpload& upload = server.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-      Serial.printf("Update: %s\n", upload.filename.c_str());
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-        Update.printError(Serial);
-      }
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-        Update.printError(Serial);
-      }
-    } else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) {
-        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-      } else {
-        Update.printError(Serial);
-      }
-    } });
-
-  server.begin();
-  Serial.println("HTTP server started");
+  else
+    EEPROM.write(64, 1);
+  Serial.printf("OTA_Flag: %d",Flag);
 }
 
-void OTA_Doing(void)
+void update_started()
 {
-  server.handleClient();
+  Serial.println("CALLBACK: HTTP update process started");
+}
+
+void update_finished()
+{
+  Serial.println("CALLBACK: HTTP update process finished");
+}
+
+void update_progress(int cur, int total)
+{
+  Serial.printf("CALLBACK: HTTP update process at %d of %d bytes... %.2f%%\n", cur, total, (cur / (float)total) * 100);
+}
+
+void update_error(int err)
+{
+  Serial.printf("CALLBACK: HTTP update fatal error code %d\n", err);
+}
+
+void updateBin()
+{
+  Serial.println("Start update");
+  WiFiClient UpdateClient;
+
+  httpUpdate.onStart(update_started);
+  httpUpdate.onEnd(update_finished);
+  httpUpdate.onProgress(update_progress);
+  httpUpdate.onError(update_error);
+
+  t_httpUpdate_return ret = httpUpdate.update(UpdateClient, upUrl);
+  switch (ret)
+  {
+  case HTTP_UPDATE_FAILED:
+    Serial.println("[update] Update failed.");
+    break;
+  case HTTP_UPDATE_NO_UPDATES:
+    Serial.println("[update] No Update.");
+    break;
+  case HTTP_UPDATE_OK:
+    Serial.println("[update] Update successful.");
+    break;
+  }
+}
+
+void Write_EEPROM_VERSION(int startAddress, String version)
+{
+  for (int i = 0; i < version.length(); i++)
+  {
+    EEPROM.write(startAddress + i, version[i]);
+  }
+  EEPROM.write(startAddress + version.length(), '\0'); // 以 null 终止字符串
+  EEPROM.commit();
+}
+
+String Read_EEPROM_VERSION(int startAddress)
+{
+  char version[32 + 1]; // +1 for null terminator
+  for (int i = 0; i < 32; i++)
+  {
+    version[i] = EEPROM.read(startAddress + i);
+  }
+  version[32] = '\0'; // null terminate the string
+  return String(version);
+}
+
+void Check_VERSION()
+{
+  String currentVersion = Read_EEPROM_VERSION(0); //1.0.1
+  String newVersion = Read_EEPROM_VERSION(32);   // 1.0.2
+
+
+
+  Serial.print("EEPROM Current version: ");
+  Serial.println(currentVersion);
+  Serial.print("EEPROM New version: ");
+  Serial.println(newVersion);
+
+  if (currentVersion != CURRENT_VERSION)
+  {
+    Write_EEPROM_VERSION(0, CURRENT_VERSION); // 写入当前版本到 EEPROM
+  }
+
+  if (newVersion != NEW_VERSION)      //  1.0.5
+  {
+    Write_EEPROM_VERSION(32, NEW_VERSION); // 写入新版本到 EEPROM
+  }
+
+  if (currentVersion != NEW_VERSION || EEPROM.read(64)==1) // 1.0.1 不等于1.0.5
+  {
+    Serial.println("Version mismatch or update required. Performing OTA update...");
+    Write_EEPROM_VERSION(0, NEW_VERSION);  //1.0.5替换
+    updateBin();
+  }
+  else
+  {
+    Serial.println("Firmware is up to date.");
+  }
 }
